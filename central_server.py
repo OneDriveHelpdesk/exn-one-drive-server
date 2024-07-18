@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from threading import Thread
-import subprocess
+from subprocess import run, CalledProcessError
+from tempfile import TemporaryDirectory
 import queue
 import time
 import re
@@ -9,16 +10,28 @@ app = Flask(__name__)
 url_queue = queue.Queue()
 
 def manage_git_operations():
+    repo_url = "git@github.com:ORNSTIL/exn-one-drive.git"  # Use SSH URL
+    file_path = "routes/authRoutes.js"
+    commit_message = "Update ngrok URL"
     while True:
         if not url_queue.empty():
             url_data = url_queue.get()
             try:
-                # Update the authRoutes.js with the new ngrok URL
-                subprocess.run(['sed', '-i', f"s|https://.*\.ngrok.io|{url_data['ngrok_url']}|", 'path/to/authRoutes.js'], check=True)
-                # Commit and push the update to GitHub
-                subprocess.run(['git', 'add', 'path/to/authRoutes.js'], check=True)
-                subprocess.run(['git', 'commit', '-m', 'Update ngrok URL'], check=True)
-                subprocess.run(['git', 'push'], check=True)
+		# Clone the repo
+            	run(['git', 'clone', repo_url, tmpdir], check=True)
+
+            	# Path to authRoutes.js
+            	auth_routes_path = os.path.join(tmpdir, file_path)
+            
+            	# Update authRoutes.js with the new ngrok URL
+            	run(['sed', '-i', f"s|https://.*\.ngrok.io|{url_data['ngrok_url']}|", auth_routes_path], check=True)
+
+            	# Git operations
+            	run(['git', 'add', auth_routes_path], cwd=tmpdir, check=True)
+            	run(['git', 'commit', '-m', commit_message], cwd=tmpdir, check=True)
+            	run(['git', 'push'], cwd=tmpdir, check=True)
+
+
                 print(f"Updated and committed ngrok URL: {url_data['ngrok_url']}")
             except subprocess.CalledProcessError as e:
                 print(f"Error during Git operations: {e}")
