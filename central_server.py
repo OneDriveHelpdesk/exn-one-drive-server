@@ -9,7 +9,8 @@ import os
 app = Flask(__name__)
 url_queue = queue.Queue()
 
-client = MongoClient("mongodb+srv://exn-onedrive:Eastbayunitedbayoaks13@onedrivecluster.bgtbmt6.mongodb.net/?retryWrites=true&w=majority&appName=OneDriveCluster")
+# Use environment variables for sensitive information
+client = MongoClient(os.getenv("MONGODB_CONNECTION_STRING"))
 db = client.ngrok
 url_collection = db.urls
 
