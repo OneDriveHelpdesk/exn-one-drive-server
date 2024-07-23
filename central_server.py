@@ -9,7 +9,6 @@ import os
 app = Flask(__name__)
 url_queue = queue.Queue()
 
-# Replace with your MongoDB Atlas connection string
 client = MongoClient("mongodb+srv://exn-onedrive:Eastbayunitedbayoaks13@onedrivecluster.bgtbmt6.mongodb.net/?retryWrites=true&w=majority&appName=OneDriveCluster")
 db = client.ngrok
 url_collection = db.urls
