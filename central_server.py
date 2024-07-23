@@ -1,74 +1,85 @@
 from flask import Flask, request, jsonify
 from threading import Thread
-from subprocess import run, CalledProcessError
-from tempfile import TemporaryDirectory
+from git import Repo
+from pymongo import MongoClient
 import queue
 import time
 import os
-import json
 
 app = Flask(__name__)
 url_queue = queue.Queue()
-url_file = 'ngrok_urls.json'
+
+# Replace with your MongoDB Atlas connection string
+client = MongoClient("mongodb+srv://exn-onedrive:Eastbayunitedbayoaks13@onedrivecluster.bgtbmt6.mongodb.net/?retryWrites=true&w=majority&appName=OneDriveCluster")
+db = client.ngrok
+url_collection = db.urls
 
 def manage_git_operations():
-    repo_url = "git@github.com:ORNSTIL/exn-one-drive.git"
+    repo_url = "https://github.com/OneDriveHelpdesk/exn-one-drive.git"
     file_path = "routes/authRoutes.js"
     commit_message = "Update ngrok URL"
     while True:
         if not url_queue.empty():
             url_data = url_queue.get()
             try:
-                with TemporaryDirectory() as tmpdir:
-                    run(['git', 'clone', repo_url, tmpdir], check=True)
-                    auth_routes_path = os.path.join(tmpdir, file_path)
-                    run(['sed', '-i', f"s|https://.*\\.ngrok.io|{url_data['ngrok_url']}|", auth_routes_path], check=True)
-                    run(['git', 'add', auth_routes_path], cwd=tmpdir, check=True)
-                    run(['git', 'commit', '-m', commit_message], cwd=tmpdir, check=True)
-                    run(['git', 'push'], cwd=tmpdir, check=True)
+                repo_dir = '/tmp/repo'
+                if os.path.exists(repo_dir):
+                    os.system(f'rm -rf {repo_dir}')
+                
+                # Get the GitHub token from environment variable
+                token = os.getenv('GITHUB_TOKEN')
+                if not token:
+                    print("GitHub token not found")
+                    return
+
+                # Use the token in the repo URL
+                token_repo_url = repo_url.replace('https://', f'https://{token}@')
+
+                Repo.clone_from(token_repo_url, repo_dir)
+                auth_routes_path = os.path.join(repo_dir, file_path)
+                with open(auth_routes_path, 'r') as file:
+                    content = file.read()
+                new_content = content.replace('https://existing.ngrok.io', url_data['ngrok_url'])
+                with open(auth_routes_path, 'w') as file:
+                    file.write(new_content)
+                repo = Repo(repo_dir)
+                repo.index.add([auth_routes_path])
+                repo.index.commit(commit_message)
+                origin = repo.remote(name='origin')
+                origin.push()
                 print(f"Updated and committed ngrok URL: {url_data['ngrok_url']}")
-            except CalledProcessError as e:
+            except Exception as e:
                 print(f"Error during Git operations: {e}")
         time.sleep(1)
 
-def save_urls_to_file(url_data):
+def save_urls_to_db(url_data):
     try:
-        if os.path.exists(url_file):
-            with open(url_file, 'r') as file:
-                urls = json.load(file)
-        else:
-            urls = []
-
-        # Append new URL if not already in the list
-        if url_data['ngrok_url'] not in urls:
-            urls.append(url_data['ngrok_url'])
-
-        with open(url_file, 'w') as file:
-            json.dump(urls, file)
+        url_collection.update_one(
+            {"ngrok_url": url_data['ngrok_url']},
+            {"$set": url_data},
+            upsert=True
+        )
     except Exception as e:
-        print(f"Error saving URLs to file: {e}")
+        print(f"Error saving URL to database: {e}")
 
-def load_urls_from_file():
+def load_urls_from_db():
     try:
-        if os.path.exists(url_file):
-            with open(url_file, 'r') as file:
-                urls = json.load(file)
-                return urls
-        return []
+        urls = list(url_collection.find({}, {"_id": 0}))
+        return urls
     except Exception as e:
-        print(f"Error loading URLs from file: {e}")
+        print(f"Error loading URLs from database: {e}")
         return []
 
 @app.route('/submit', methods=['POST'])
 def submit_url():
     url_data = request.get_json()
     url_queue.put(url_data)
-    save_urls_to_file(url_data)
+    save_urls_to_db(url_data)
     return jsonify({"message": "URL queued for update"}), 202
 
 @app.route('/list_urls', methods=['GET'])
 def list_urls():
-    urls = load_urls_from_file()
+    urls = load_urls_from_db()
     return jsonify({"urls": urls})
 
 if __name__ == '__main__':
