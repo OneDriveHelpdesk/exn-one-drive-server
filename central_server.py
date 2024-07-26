@@ -70,6 +70,13 @@ def load_urls_from_db():
         print(f"Error loading URLs from database: {e}")
         return []
 
+def remove_url_from_db(url):
+    try:
+        url_collection.delete_one({"ngrok_url": url})
+        print(f"Removed ngrok URL from database: {url}")
+    except Exception as e:
+        print(f"Error removing URL from database: {e}")
+
 @app.route('/submit', methods=['POST'])
 def submit_url():
     url_data = request.get_json()
@@ -81,6 +88,15 @@ def submit_url():
 def list_urls():
     urls = load_urls_from_db()
     return jsonify({"urls": urls})
+
+@app.route('/remove', methods=['DELETE'])
+def remove_url():
+    url_data = request.get_json()
+    url = url_data.get("ngrok_url")
+    if url:
+        remove_url_from_db(url)
+        return jsonify({"message": "URL removed"}), 200
+    return jsonify({"error": "Invalid URL"}), 400
 
 if __name__ == '__main__':
     git_thread = Thread(target=manage_git_operations, daemon=True)
